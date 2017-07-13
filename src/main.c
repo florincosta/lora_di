@@ -59,6 +59,7 @@ Maintainer: Miguel Luis and Gregory Cristian
   */
 
 /* Includes ------------------------------------------------------------------*/
+/*test commit 12.07.2017 */
 #include <string.h>
 #include "hw.h"
 #include "radio.h"
@@ -121,11 +122,19 @@ Maintainer: Miguel Luis and Gregory Cristian
                    LED_Off( LED_GREEN1 ) ; \
                    LED_Off( LED_GREEN2 ) ; \
                    } while(0) ;
+#define ONE_SEC 120000
 
+typedef enum{
+	sleepSt =0,
+	powerSt,
+	checkWakeUpEvSt,
+	powerWakeOnRtcSt,
+}fsmStates;
 
 uint8_t buffer[BUFFER_SIZE];
 volatile uint32_t rxTimeoutFlag;
 volatile uint32_t rxDataFlag;
+static fsmStates states = sleepSt;
 
  /* Led Timers objects*/
 static  TimerEvent_t timerLed;
@@ -135,6 +144,8 @@ static  TimerEvent_t timerLed;
  * Radio events function pointer
  */
 static RadioEvents_t RadioEvents;
+
+static fsmStates setFSMState(fsmStates states);
 
 /*!
  * \brief Function to be executed on Radio Tx Done event
@@ -164,6 +175,7 @@ void OnRxError(void);
 /*!
  * \brief Function executed on when led timer elapses
  */
+
 static void OnledEvent(void);
 
 
@@ -171,6 +183,9 @@ static void OnledEvent(void);
  * \brief Function executed on when led timer elapses
  */
 static void OnUserButtonEvent(void);
+/**
+  * @brief  System Clock Configuration */
+static void devSystemClock_ConfigLPM(void);
 
 
 /**
@@ -178,19 +193,19 @@ static void OnUserButtonEvent(void);
  */
 int main(void) {
     HAL_Init();
-    SystemClock_Config();
-    DBG_Init();
+    /* Configure the system clock to 2 MHz */
+    devSystemClock_ConfigLPM();
+    /*commented to see the consumption */
+    //DBG_Init();
     HW_Init();
 
-    BSP_PB_Init(BUTTON_USER, BUTTON_MODE_GPIO);
-    BSP_PB_Init(BUTTON_USER, BUTTON_MODE_EXTI);
-    HW_GPIO_SetIrq(USER_BUTTON_GPIO_PORT, USER_BUTTON_PIN, 0, OnUserButtonEvent);
 
+    /*commented to see the consumption */
     /* Led Timers*/
-    TimerInit(&timerLed, OnledEvent);
-    TimerSetValue(&timerLed, LED_PERIOD_MS);
-
-    TimerStart(&timerLed);
+//    TimerInit(&timerLed, OnledEvent);
+//    TimerSetValue(&timerLed, LED_PERIOD_MS);
+//
+//    TimerStart(&timerLed);
 
     // Radio initialization
     RadioEvents.TxDone = OnTxDone;
@@ -230,48 +245,126 @@ int main(void) {
     #error "Please define a frequency band in the compiler options."
 #endif
 
-//#define SENDER
+    //__HAL_FLASH_PREFETCH_BUFFER_DISABLE();
+#define SENDER
 #ifdef SENDER
     uint32_t old_state = BSP_PB_GetState(BUTTON_USER);
     uint32_t state = old_state;
 
     while(true) {
-        // exit low power
 
-        // read button state
-        state = BSP_PB_GetState(BUTTON_USER);
-        if(state != old_state) {
-            if(state) {
-                buffer[0] = 'o';
-                buffer[1] = 'f';
-                buffer[2] = 'f';
-                buffer[3] = 0x00;
-            }
-            else {
-                buffer[0] = 'o';
-                buffer[1] = 'n';
-                buffer[2] = 0x00;
-                buffer[3] = 0x00;
-            }
+    	switch(states)
+    	{
+    		case sleepSt:
+    		{
+    		    /* Insert 0.5 seconds delay */
+				HAL_Delay(500);
 
-    //        DelayMs(1);
+				/* User push-button (External lines 4 to 15) will be used to wakeup the system from SLEEP mode */
+				//BSP_PB_Init(BUTTON_KEY, BUTTON_MODE_EXTI);
+				 BSP_PB_Init(BUTTON_USER, BUTTON_MODE_GPIO);
+				 BSP_PB_Init(BUTTON_USER, BUTTON_MODE_EXTI);
+				 HW_GPIO_SetIrq(USER_BUTTON_GPIO_PORT, USER_BUTTON_PIN, 0, OnUserButtonEvent);
 
-            // send  button state
-            PRINTF(buffer);
-            PRINTF("\n");
-            Radio.Send(buffer, BUFFER_SIZE);
-        }
-        old_state = state;
+				/*Suspend Tick increment to prevent wakeup by Systick interrupt.
+				Otherwise the Systick interrupt will wake up the device within 1ms (HAL time base)*/
+				HAL_SuspendTick();
 
-        // enter low power
-//        DISABLE_IRQ( );
-//        LowPower_Handler();
-        DelayMs(200);
-//        ENABLE_IRQ();
+				/* Enable Power Control clock */
+				__HAL_RCC_PWR_CLK_ENABLE();
+
+				HW_RTC_SetAlarm(ONE_SEC);
+				states = checkWakeUpEvSt;
+				/* Enter Sleep Mode , wake up is done once User push-button is pressed */
+				HAL_PWR_EnterSLEEPMode(PWR_MAINREGULATOR_ON, PWR_SLEEPENTRY_WFI);
+
+				 /* Resume Tick interrupt if disabled prior to sleep mode entry*/
+				HAL_ResumeTick();
+
+
+    		}
+    		break;
+
+    		case powerSt:
+    		{
+    			state = BSP_PB_GetState(BUTTON_USER);
+				if(state != old_state) {
+					if(state) {
+						buffer[0] = 'o';
+						buffer[1] = 'f';
+						buffer[2] = 'f';
+						buffer[3] = 0x00;
+					}
+					else {
+						buffer[0] = 'o';
+						buffer[1] = 'n';
+						buffer[2] = 0x00;
+						buffer[3] = 0x00;
+					}
+
+					// send  button state
+					PRINTF(buffer);
+					PRINTF("\n");
+					Radio.Send(buffer, BUFFER_SIZE);
+				}
+				else
+				{
+					states = sleepSt;
+				}
+
+				old_state = state;
+				DelayMs(200);
+
+
+    		}
+    		break;
+
+    		case checkWakeUpEvSt:
+			{
+				if ( (__HAL_PWR_GET_FLAG(PWR_FLAG_WU)) == SET)
+				{
+					states = powerWakeOnRtcSt;
+				}
+				else
+				{
+					states = checkWakeUpEvSt;
+				}
+			}
+			break;
+
+    		case powerWakeOnRtcSt:
+    		{
+    			if (BSP_PB_GetState(BUTTON_USER) == GPIO_PIN_RESET)
+    			{
+    				buffer[0] = 'o';
+					buffer[1] = 'n';
+					buffer[2] = 0x00;
+					buffer[3] = 0x00;
+    			}
+    			else
+    			{
+					buffer[0] = 'o';
+					buffer[1] = 'f';
+					buffer[2] = 'f';
+					buffer[3] = 0x00;
+       			}
+
+    			// send  button state
+				PRINTF(buffer);
+				PRINTF("\n");
+
+				states = sleepSt;
+				Radio.Send(buffer, BUFFER_SIZE);
+
+    		}
+    		break;
+
+    	}
+
     }
 #endif
 
-#define RECEIVER
+//#define RECEIVER
 #ifdef RECEIVER
     while(true) {
         rxTimeoutFlag = false;
@@ -280,6 +373,61 @@ int main(void) {
         while(!rxTimeoutFlag && !rxDataFlag);
     }
 #endif
+}
+
+ /*
+  * @brief  System Clock Configuration
+  *         The system Clock is configured as follow :
+  *            System Clock source            = MSI
+  *            SYSCLK(Hz)                     = 2000000
+  *            HCLK(Hz)                       = 2000000
+  *            AHB Prescaler                  = 1
+  *            APB1 Prescaler                 = 1
+  *            APB2 Prescaler                 = 1
+  *            Flash Latency(WS)              = 0
+  *            Main regulator output voltage  = Scale3 mode
+  * @retval None
+  */
+void devSystemClock_ConfigLPM(void)
+{
+  RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
+  RCC_OscInitTypeDef RCC_OscInitStruct = {0};
+
+  /* Enable MSI Oscillator */
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_MSI;
+  RCC_OscInitStruct.MSIState = RCC_MSI_ON;
+  RCC_OscInitStruct.MSIClockRange = RCC_MSIRANGE_5;
+  RCC_OscInitStruct.MSICalibrationValue=0x00;
+  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
+  if (HAL_RCC_OscConfig(&RCC_OscInitStruct)!= HAL_OK)
+  {
+    /* Initialization Error */
+    while(1);
+  }
+
+  /* Select MSI as system clock source and configure the HCLK, PCLK1 and PCLK2
+     clocks dividers */
+  RCC_ClkInitStruct.ClockType = (RCC_CLOCKTYPE_SYSCLK | RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2);
+  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_MSI;
+  RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
+  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
+  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0)!= HAL_OK)
+  {
+    /* Initialization Error */
+    while(1);
+  }
+  /* Enable Power Control clock */
+  __HAL_RCC_PWR_CLK_ENABLE();
+
+  /* The voltage scaling allows optimizing the power consumption when the device is
+     clocked below the maximum system frequency, to update the voltage scaling value
+     regarding system frequency refer to product datasheet.  */
+  __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE3);
+
+  /* Disable Power Control clock */
+  __HAL_RCC_PWR_CLK_DISABLE();
+
 }
 
 void OnTxDone(void)
@@ -325,6 +473,12 @@ void OnRxError(void)
     PRINTF("OnRxError\n");
 }
 
+static  fsmStates setFSMState(fsmStates states)
+{
+	fsmStates st;
+	st = states;
+	return st;
+}
 static void OnledEvent(void)
 {
   LED_Toggle( LED_BLUE ) ; 
@@ -337,6 +491,7 @@ static void OnledEvent(void)
 
 void OnUserButtonEvent(void)
 {
+	states = setFSMState(powerSt);
     PRINTF("UserButton\n");
 }
 
