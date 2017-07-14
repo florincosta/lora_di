@@ -130,7 +130,7 @@ typedef enum{
 	checkWakeUpEvSt,
 	powerWakeOnRtcSt,
 }fsmStates;
-/*comment for commit testing */
+/* commit test florinCosta */
 uint8_t buffer[BUFFER_SIZE];
 volatile uint32_t rxTimeoutFlag;
 volatile uint32_t rxDataFlag;
