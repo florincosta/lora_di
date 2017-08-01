@@ -74,8 +74,6 @@ Maintainer: Miguel Luis and Gregory Cristian
 //#define RADIO_DIO_5
 
 /* LORA I/O definition */
-
-
 #define RADIO_RESET_PORT                          GPIOA
 #define RADIO_RESET_PIN                           GPIO_PIN_0
 
@@ -116,8 +114,12 @@ Maintainer: Miguel Luis and Gregory Cristian
 #define RADIO_ANT_SWITCH_PORT                     GPIOC
 #define RADIO_ANT_SWITCH_PIN                      GPIO_PIN_1
 
+ /* Battery voltage level */
 #define BAT_LEVEL_PORT                            GPIOA
-#define BAT_LEVEL_PIN                             GPIO_PIN_4
+#define BAT_LEVEL_PIN                             GPIO_PIN_2
+
+#define BAT_DIVISOR_CONTROL_PORT                  GPIOA
+#define BAT_DIVISOR_CONTROL_PIN                   GPIO_PIN_15
 /*  SPI MACRO redefinition */
 
 #define SPI_CLK_ENABLE()                __HAL_RCC_SPI1_CLK_ENABLE()

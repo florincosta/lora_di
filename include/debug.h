@@ -69,7 +69,7 @@
 
 void DBG_Init( void );
 
-void Error_Handler( void );
+//void Error_Handler( void );
 
 #ifdef DEBUG
 

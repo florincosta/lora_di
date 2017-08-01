@@ -57,6 +57,7 @@ Maintainer: Miguel Luis and Gregory Cristian
   *
   ******************************************************************************
   */
+#include "stm32l0xx_ll_adc.h"
 #include "hw.h"
 #include "radio.h"
 #include "debug.h"
@@ -72,10 +73,8 @@ Maintainer: Miguel Luis and Gregory Cristian
 /*!
  * \brief ADC Vbat measurement constants
  */
-
- /* Internal voltage reference, parameter VREFINT_CAL*/
-#define VREFINT_CAL       ((uint16_t*) ((uint32_t) 0x1FF80078))
-#define LORAWAN_MAX_BAT   254
+#define RANGE_12BITS                   ((uint32_t)4095)    /* Max value with a full range of 12 bits */
+#define BATTERYVOLTAGE_DIVISION_FACTOR (2)
 
 static ADC_HandleTypeDef hadc;
 /*!
@@ -93,27 +92,20 @@ static bool McuInitialized = false;
   * @param None
   * @retval None
   */
-void HW_Init( void )
-{
-  if( McuInitialized == false )
-  {
+void HW_Init( void ) {
+    if( McuInitialized == false ) {
 #if defined( USE_BOOTLOADER )
-    /* Set the Vector Table base location at 0x3000 */
-    NVIC_SetVectorTable( NVIC_VectTab_FLASH, 0x3000 );
+        /* Set the Vector Table base location at 0x3000 */
+        NVIC_SetVectorTable( NVIC_VectTab_FLASH, 0x3000 );
 #endif
-
-    HW_AdcInit( );
-
-    Radio.IoInit( );
-    
-    HW_SPI_Init( );
-
-    HW_RTC_Init( );
-    
-    vcom_Init( );
-
-    McuInitialized = true;
-  }
+        HW_GpioInit();
+        HW_AdcInit();
+        Radio.IoInit();
+        HW_SPI_Init();
+        HW_RTC_Init();
+        vcom_Init();
+        McuInitialized = true;
+    }
 }
 
 /**
@@ -121,72 +113,68 @@ void HW_Init( void )
   * @param None
   * @retval None
   */
-void HW_DeInit( void )
-{
-  HW_SPI_DeInit( );
-  
-  Radio.IoDeInit( );
-  
-  vcom_DeInit( );
- 
-  McuInitialized = false;
+void HW_DeInit( void ) {
+    HW_SPI_DeInit( );
+    Radio.IoDeInit( );
+    vcom_DeInit( );
+    McuInitialized = false;
 }
 
-/**
-  * @brief  System Clock Configuration
-  *         The system Clock is configured as follow :
-  *            System Clock source            = PLL (HSI)
-  *            SYSCLK(Hz)                     = 32000000
-  *            HCLK(Hz)                       = 32000000
-  *            AHB Prescaler                  = 1
-  *            APB1 Prescaler                 = 1
-  *            APB2 Prescaler                 = 1
-  *            HSI Frequency(Hz)              = 16000000
-  *            PLLMUL                         = 6
-  *            PLLDIV                         = 3
-  *            Flash Latency(WS)              = 1
-  * @retval None
-  */
-
-void SystemClock_Config( void )
-{
-  RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
-  RCC_OscInitTypeDef RCC_OscInitStruct = {0};
-
-  /* Enable HSE Oscillator and Activate PLL with HSE as source */
-  RCC_OscInitStruct.OscillatorType      = RCC_OSCILLATORTYPE_HSI;
-  RCC_OscInitStruct.HSEState            = RCC_HSE_OFF;
-  RCC_OscInitStruct.HSIState            = RCC_HSI_ON;
-  RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
-  RCC_OscInitStruct.PLL.PLLState        = RCC_PLL_ON;
-  RCC_OscInitStruct.PLL.PLLSource       = RCC_PLLSOURCE_HSI;
-  RCC_OscInitStruct.PLL.PLLMUL          = RCC_PLLMUL_6;
-  RCC_OscInitStruct.PLL.PLLDIV          = RCC_PLLDIV_3;
-
-  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
-  {
-    Error_Handler();
-  }
-
-  /* Set Voltage scale1 as MCU will run at 32MHz */
-  __HAL_RCC_PWR_CLK_ENABLE();
-  __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE1);
-  
-  /* Poll VOSF bit of in PWR_CSR. Wait until it is reset to 0 */
-  while (__HAL_PWR_GET_FLAG(PWR_FLAG_VOS) != RESET) {};
-
-  /* Select PLL as system clock source and configure the HCLK, PCLK1 and PCLK2
-  clocks dividers */
-  RCC_ClkInitStruct.ClockType = (RCC_CLOCKTYPE_SYSCLK | RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2);
-  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
-  RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
-  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
-  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-}
+///**
+//  * @brief  System Clock Configuration
+//  *         The system Clock is configured as follow :
+//  *            System Clock source            = PLL (HSI)
+//  *            SYSCLK(Hz)                     = 32000000
+//  *            HCLK(Hz)                       = 32000000
+//  *            AHB Prescaler                  = 1
+//  *            APB1 Prescaler                 = 1
+//  *            APB2 Prescaler                 = 1
+//  *            HSI Frequency(Hz)              = 16000000
+//  *            PLLMUL                         = 6
+//  *            PLLDIV                         = 3
+//  *            Flash Latency(WS)              = 1
+//  * @retval None
+//  */
+//
+//void SystemClock_Config( void )
+//{
+//  RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
+//  RCC_OscInitTypeDef RCC_OscInitStruct = {0};
+//
+//  /* Enable HSE Oscillator and Activate PLL with HSE as source */
+//  RCC_OscInitStruct.OscillatorType      = RCC_OSCILLATORTYPE_HSI;
+//  RCC_OscInitStruct.HSEState            = RCC_HSE_OFF;
+//  RCC_OscInitStruct.HSIState            = RCC_HSI_ON;
+//  RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
+//  RCC_OscInitStruct.PLL.PLLState        = RCC_PLL_ON;
+//  RCC_OscInitStruct.PLL.PLLSource       = RCC_PLLSOURCE_HSI;
+//  RCC_OscInitStruct.PLL.PLLMUL          = RCC_PLLMUL_6;
+//  RCC_OscInitStruct.PLL.PLLDIV          = RCC_PLLDIV_3;
+//
+//  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
+//  {
+//    Error_Handler();
+//  }
+//
+//  /* Set Voltage scale1 as MCU will run at 32MHz */
+//  __HAL_RCC_PWR_CLK_ENABLE();
+//  __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE1);
+//
+//  /* Poll VOSF bit of in PWR_CSR. Wait until it is reset to 0 */
+//  while (__HAL_PWR_GET_FLAG(PWR_FLAG_VOS) != RESET) {};
+//
+//  /* Select PLL as system clock source and configure the HCLK, PCLK1 and PCLK2
+//  clocks dividers */
+//  RCC_ClkInitStruct.ClockType = (RCC_CLOCKTYPE_SYSCLK | RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2);
+//  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
+//  RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
+//  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
+//  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
+//  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_1) != HAL_OK)
+//  {
+//    Error_Handler();
+//  }
+//}
 /**
   * @brief This function return a random seed
   * @note based on the device unique ID
@@ -216,40 +204,43 @@ void HW_GetUniqueId( uint8_t *id )
 }
 
 /**
+  * @brief This function initializes some GPIOs
+  * @param none
+  * @retval none
+  */
+void HW_GpioInit( void ) {
+    GPIO_InitTypeDef initStruct;
+
+    initStruct.Mode = GPIO_MODE_OUTPUT_OD;
+    initStruct.Pull = GPIO_NOPULL;
+    initStruct.Speed = GPIO_SPEED_FREQ_LOW;
+    HW_GPIO_Init(BAT_DIVISOR_CONTROL_PORT, BAT_DIVISOR_CONTROL_PIN, &initStruct);
+    HW_GPIO_Write(BAT_DIVISOR_CONTROL_PORT, BAT_DIVISOR_CONTROL_PIN, GPIO_PIN_SET);
+}
+
+/**
   * @brief This function return the battery level
   * @param none
-  * @retval the battery level  1 (very low) to 254 (fully charged)
+  * @retval the battery voltage in mV
   */
-uint8_t HW_GetBatteryLevel( void ) 
-{
-  uint8_t batteryLevel = 0;
-  uint16_t measuredLevel = 0;
-  uint32_t batteryLevelmV;
+uint16_t HW_GetBatteryVoltage( void ) {
+    uint16_t vrefIntAdcConvertedValue;
+    uint16_t vrefIntVoltage;
+    uint16_t batteryAdcConvertedValue;
+    uint16_t batteryAdcConvertedVoltage;
+    uint16_t vddVoltage;
 
-  measuredLevel = HW_AdcReadChannel( ADC_CHANNEL_VREFINT ); 
+    vrefIntAdcConvertedValue = HW_AdcReadChannel(ADC_CHANNEL_VREFINT);
+    vrefIntVoltage = *VREFINT_CAL_ADDR * VREFINT_CAL_VREF / RANGE_12BITS;
+    vddVoltage = RANGE_12BITS * vrefIntVoltage / vrefIntAdcConvertedValue;
 
-  if (measuredLevel == 0)
-  {
-    batteryLevelmV = 0;
-  }
-  else
-  {
-    batteryLevelmV= (( (uint32_t) VDDA_TEMP_CAL * (*VREFINT_CAL ) )/ measuredLevel);
-  }
+    HW_GPIO_Write(BAT_DIVISOR_CONTROL_PORT, BAT_DIVISOR_CONTROL_PIN, GPIO_PIN_RESET); // enable voltage divider
+    batteryAdcConvertedValue = HW_AdcReadChannel(ADC_CHANNEL_1);
+    HW_GPIO_Write(BAT_DIVISOR_CONTROL_PORT, BAT_DIVISOR_CONTROL_PIN, GPIO_PIN_SET); // disable voltage divider
 
-  if (batteryLevelmV > VDD_BAT)
-  {
-    batteryLevel = LORAWAN_MAX_BAT;
-  }
-  else if (batteryLevelmV < VDD_MIN)
-  {
-    batteryLevel = 0;
-  }
-  else
-  {
-    batteryLevel = (( (uint32_t) (batteryLevelmV - VDD_MIN)*LORAWAN_MAX_BAT) /(VDD_BAT-VDD_MIN) ); 
-  }
-  return batteryLevel;
+    batteryAdcConvertedVoltage = (batteryAdcConvertedValue * vddVoltage / RANGE_12BITS) * BATTERYVOLTAGE_DIVISION_FACTOR;
+
+    return batteryAdcConvertedVoltage;
 }
 
 /**
@@ -257,52 +248,46 @@ uint8_t HW_GetBatteryLevel( void )
   * @param none
   * @retval none
   */
-void HW_AdcInit( void )
-{
-  if( AdcInitialized == false )
-  {
-    AdcInitialized = true;
-    GPIO_InitTypeDef initStruct;
-    
-    hadc.Instance  = ADC1;
-    
-    hadc.Init.OversamplingMode      = DISABLE;
-  
-    hadc.Init.ClockPrescaler        = ADC_CLOCK_SYNC_PCLK_DIV1;
-    hadc.Init.LowPowerAutoPowerOff  = DISABLE;
-    hadc.Init.LowPowerFrequencyMode = ENABLE;
-    hadc.Init.LowPowerAutoWait      = DISABLE;
-    
-    hadc.Init.Resolution            = ADC_RESOLUTION_12B;
-    hadc.Init.SamplingTime          = ADC_SAMPLETIME_7CYCLES_5;
-    hadc.Init.ScanConvMode          = ADC_SCAN_DIRECTION_FORWARD;
-    hadc.Init.DataAlign             = ADC_DATAALIGN_RIGHT;
-    hadc.Init.ContinuousConvMode    = DISABLE;
-    hadc.Init.DiscontinuousConvMode = DISABLE;
-    hadc.Init.ExternalTrigConvEdge  = ADC_EXTERNALTRIGCONVEDGE_NONE;
-    hadc.Init.EOCSelection          = ADC_EOC_SINGLE_CONV;
-    hadc.Init.DMAContinuousRequests = DISABLE;
+void HW_AdcInit( void ) {
+    if( AdcInitialized == false ) {
+        AdcInitialized = true;
+        GPIO_InitTypeDef initStruct;
 
-    ADCCLK_ENABLE();
-    
+        hadc.Instance = ADC1;
+        hadc.Init.OversamplingMode      = DISABLE;
+        hadc.Init.ClockPrescaler        = ADC_CLOCK_SYNC_PCLK_DIV1;
+        hadc.Init.LowPowerAutoPowerOff  = DISABLE;
+        hadc.Init.LowPowerFrequencyMode = ENABLE;
+        hadc.Init.LowPowerAutoWait      = DISABLE;
+        hadc.Init.Resolution            = ADC_RESOLUTION_12B;
+        hadc.Init.SamplingTime          = ADC_SAMPLETIME_39CYCLES_5;
+        hadc.Init.ScanConvMode          = ADC_SCAN_DIRECTION_FORWARD;
+        hadc.Init.DataAlign             = ADC_DATAALIGN_RIGHT;
+        hadc.Init.ContinuousConvMode    = DISABLE;
+        hadc.Init.DiscontinuousConvMode = DISABLE;
+        hadc.Init.ExternalTrigConvEdge  = ADC_EXTERNALTRIGCONVEDGE_NONE;
+        hadc.Init.EOCSelection          = ADC_EOC_SINGLE_CONV;
+        hadc.Init.DMAContinuousRequests = DISABLE;
 
-    HAL_ADC_Init( &hadc );
+        ADCCLK_ENABLE();
+        HAL_ADC_Init(&hadc);
 
-    initStruct.Mode =GPIO_MODE_ANALOG;
-    initStruct.Pull = GPIO_NOPULL;
-    initStruct.Speed = GPIO_SPEED_HIGH;
-
-    HW_GPIO_Init( BAT_LEVEL_PORT, BAT_LEVEL_PIN, &initStruct );
-  }
+        initStruct.Mode = GPIO_MODE_ANALOG;
+        initStruct.Pull = GPIO_NOPULL;
+        initStruct.Speed = GPIO_SPEED_HIGH;
+        HW_GPIO_Init(BAT_LEVEL_PORT, BAT_LEVEL_PIN, &initStruct);
+    }
 }
 /**
   * @brief This function De-initializes the ADC
   * @param none
   * @retval none
   */
-void HW_AdcDeInit( void )
-{
-  AdcInitialized = false;
+void HW_AdcDeInit( void ) {
+    if(AdcInitialized == true) {
+        AdcInitialized = false;
+        HAL_ADC_DeInit(&hadc);
+    }
 }
 
 /**
@@ -310,46 +295,41 @@ void HW_AdcDeInit( void )
   * @param Channel
   * @retval Value
   */
-uint16_t HW_AdcReadChannel( uint32_t Channel )
-{
-
-  ADC_ChannelConfTypeDef adcConf;
-  uint16_t adcData = 0;
+uint16_t HW_AdcReadChannel(uint32_t Channel) {
+    ADC_ChannelConfTypeDef adcConf;
+    uint16_t adcData = 0;
   
-  if( AdcInitialized == true )
-  {
-    /* wait the the Vrefint used by adc is set */
-    while (__HAL_PWR_GET_FLAG(PWR_FLAG_VREFINTRDY) == RESET) {};
+    if(AdcInitialized == true) {
+        /* wait the the Vrefint used by adc is set */
+        while (__HAL_PWR_GET_FLAG(PWR_FLAG_VREFINTRDY) == RESET) {};
       
-    ADCCLK_ENABLE();
+        ADCCLK_ENABLE();
+
+        /*calibrate ADC if any calibraiton hardware*/
+        HAL_ADCEx_Calibration_Start(&hadc, ADC_SINGLE_ENDED );
+
+        /* Deselects all channels*/
+        hadc.Instance->CHSELR = 0;
+
+        /* configure adc channel */
+        adcConf.Channel = Channel;
+        adcConf.Rank = ADC_RANK_CHANNEL_NUMBER;
+        HAL_ADC_ConfigChannel( &hadc, &adcConf);
+
+        /* Start the conversion process */
+        HAL_ADC_Start( &hadc);
+
+        /* Wait for the end of conversion */
+        HAL_ADC_PollForConversion( &hadc, HAL_MAX_DELAY );
+
+        /* Get the converted value of regular channel */
+        adcData = HAL_ADC_GetValue ( &hadc );
     
-    /*calibrate ADC if any calibraiton hardware*/
-    HAL_ADCEx_Calibration_Start(&hadc, ADC_SINGLE_ENDED );
+        __HAL_ADC_DISABLE( &hadc ) ;
     
-    /* Deselects all channels*/
-    adcConf.Channel = ADC_CHANNEL_MASK;
-    adcConf.Rank = ADC_RANK_NONE; 
-    HAL_ADC_ConfigChannel( &hadc, &adcConf);
-      
-    /* configure adc channel */
-    adcConf.Channel = Channel;
-    adcConf.Rank = ADC_RANK_CHANNEL_NUMBER;
-    HAL_ADC_ConfigChannel( &hadc, &adcConf);
-
-    /* Start the conversion process */
-    HAL_ADC_Start( &hadc);
-      
-    /* Wait for the end of conversion */
-    HAL_ADC_PollForConversion( &hadc, HAL_MAX_DELAY );
-      
-    /* Get the converted value of regular channel */
-    adcData = HAL_ADC_GetValue ( &hadc);
-
-    __HAL_ADC_DISABLE( &hadc) ;
-
-    ADCCLK_DISABLE();
-  }
-  return adcData;
+        ADCCLK_DISABLE();
+    }
+    return adcData;
 }
 
 /**

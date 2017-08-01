@@ -113,9 +113,9 @@ do {                                                    \
 /*!
  * \brief Get the current battery level
  *
- * \retval value  battery level ( 0: very low, 254: fully charged )
+ * \retval value  battery voltage in mVb
  */
-uint8_t HW_GetBatteryLevel( void );
+uint16_t HW_GetBatteryVoltage( void );
 /*!
  * \brief Initializes the boards peripherals.
  */
@@ -166,12 +166,20 @@ typedef enum
     e_LOW_POWER_UART = (1<<2), /* can be used to forbid stop mode in case of uart Xfer*/
   } e_LOW_POWER_State_Id_t;
 
+
+/*!
+* \brief Initializes the ADC
+*
+* \param [IN] none
+*/
+void HW_GpioInit( void );
+
 /* ADC */
 
 /*!
- * \brief Initializes the ADC input
+ * \brief Initializes the ADC
  *
- * \param [IN] scl  ADC input pin name to be used
+ * \param [IN] none
  */
 void HW_AdcInit(  void );
 

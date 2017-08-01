@@ -1071,6 +1071,8 @@ void SX1272Reset( void )
 
 void SX1272SetOpMode( uint8_t opMode )
 {
+    uint8_t currentOpMode;
+    uint8_t readOpMode;
     if( opMode == RF_OPMODE_SLEEP )
     {
         SX1272SetAntSwLowPower( true );
@@ -1080,7 +1082,13 @@ void SX1272SetOpMode( uint8_t opMode )
         SX1272SetAntSwLowPower( false );
         SX1272SetAntSw( opMode );
     }
-    SX1272Write( REG_OPMODE, ( SX1272Read( REG_OPMODE ) & RF_OPMODE_MASK ) | opMode );
+
+    readOpMode = SX1272Read(REG_OPMODE);
+
+    currentOpMode = readOpMode & (~(uint8_t)RF_OPMODE_MASK);
+    if(opMode != currentOpMode) {
+        SX1272Write( REG_OPMODE, ( (uint8_t)readOpMode & RF_OPMODE_MASK ) | opMode );
+    }
 }
 
 void SX1272SetModem( RadioModems_t modem )
@@ -1395,7 +1403,7 @@ void SX1272OnDio0Irq( void )
                     if( ( RadioEvents != NULL ) && ( RadioEvents->RxDone != NULL ) )
                     {
                         RadioEvents->RxDone( RxTxBuffer, SX1272.Settings.LoRaPacketHandler.Size, SX1272.Settings.LoRaPacketHandler.RssiValue, SX1272.Settings.LoRaPacketHandler.SnrValue );
-                       PRINTF("rxDone\n\r");
+//                       PRINTF("rxDone\n\r");
                     }
                 }
                 break;
@@ -1418,7 +1426,7 @@ void SX1272OnDio0Irq( void )
                 if( ( RadioEvents != NULL ) && ( RadioEvents->TxDone != NULL ) )
                 {
                     RadioEvents->TxDone( );
-                   PRINTF("txDone\n\r");
+//                   PRINTF("txDone\n\r");
                 } 
                 break;
             }
@@ -1471,7 +1479,7 @@ void SX1272OnDio1Irq( void )
                 if( ( RadioEvents != NULL ) && ( RadioEvents->RxTimeout != NULL ) )
                 {
                     RadioEvents->RxTimeout( );
-                    PRINTF("rxTimeOut\n\r");
+//                    PRINTF("rxTimeOut\n\r");
                 }
                 break;
             default:
