@@ -120,7 +120,7 @@
                    LED_Off( LED_GREEN1 ) ; \
                    LED_Off( LED_GREEN2 ) ; \
                    } while(0) ;
-#define TWO_SEC 5000
+#define THIRTHY_MIN 1800000L
 
 #define RTC_ASYNCH_PREDIV    0x7C
 #define RTC_SYNCH_PREDIV     0x0127
@@ -267,7 +267,7 @@ int main(void) {
 	                OnUserButtonEvent);
 
 	                Radio.Sleep();
-	                HW_RTC_SetAlarm(5000);
+	                HW_RTC_SetAlarm(THIRTHY_MIN);
                     states = ST_RUN;
                     HAL_PWR_EnterSTOPMode(PWR_LOWPOWERREGULATOR_ON, PWR_STOPENTRY_WFI);
 	            }
